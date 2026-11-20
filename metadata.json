@@ -1,0 +1,6 @@
+{
+  "name": "Dr.Med Rayen Bouazizi — Plateforme Médicale 3D",
+  "description": "Plateforme médicale interactive de visualisation anatomique 3D, télédiagnostic sécurisé, dossiers médicaux et fiches de consultation.",
+  "requestFramePermissions": ["camera", "microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
