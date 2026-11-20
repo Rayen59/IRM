@@ -12,7 +12,7 @@ import {
   Upload,
   X,
 } from 'lucide-react';
-import {useState, type FormEvent} from 'react';
+import {useEffect, useState, type FormEvent} from 'react';
 import {api, uploadMediaFile} from '../lib/api';
 import {
   MEDICAL_CATEGORIES,
@@ -38,6 +38,7 @@ interface PatientWorkspaceProps {
   preselectedZone: string;
   onOpenComposer: () => void;
   onCloseComposer: () => void;
+  onDossierCreated: (dossier: MedicalDossier) => void;
   onRefresh: () => Promise<void>;
 }
 
@@ -61,6 +62,7 @@ export function PatientWorkspace({
   preselectedZone,
   onOpenComposer,
   onCloseComposer,
+  onDossierCreated,
   onRefresh,
 }: PatientWorkspaceProps) {
   const [category, setCategory] = useState<MedicalCategoryId>(preselectedCategory);
@@ -76,14 +78,13 @@ export function PatientWorkspace({
   const [lightbox, setLightbox] = useState<{url: string; name: string} | null>(null);
   const [scannerOpen, setScannerOpen] = useState(false);
 
-  // Sync preselected category/zone when composer opens from 3D viewer
-  const [lastSyncedKey, setLastSyncedKey] = useState('');
-  const syncKey = `${composerOpen}-${preselectedCategory}-${preselectedZone}`;
-  if (composerOpen && syncKey !== lastSyncedKey) {
-    setLastSyncedKey(syncKey);
-    setCategory(preselectedCategory);
-    setAnatomicalZone(preselectedZone);
-  }
+  // Sync preselected category/zone cleanly when composer opens from 3D viewer
+  useEffect(() => {
+    if (composerOpen) {
+      setCategory(preselectedCategory);
+      setAnatomicalZone(preselectedZone);
+    }
+  }, [composerOpen, preselectedCategory, preselectedZone]);
 
   const handleMriUpload = async (files: FileList | null) => {
     if (!files || files.length === 0) return;
@@ -122,7 +123,7 @@ export function PatientWorkspace({
     setFormError('');
     setSubmitting(true);
     try {
-      await api.createDossier({
+      const res = await api.createDossier({
         category,
         anatomicalZone,
         symptoms,
@@ -131,14 +132,15 @@ export function PatientWorkspace({
         documents,
         videoUrl,
       });
+      onDossierCreated(res.dossier);
       setSymptoms('');
       setHealthDetails('');
       setAnatomicalZone('');
       setMriImages([]);
       setDocuments([]);
       setVideoUrl(null);
-      await onRefresh();
       onCloseComposer();
+      void onRefresh();
     } catch (err) {
       setFormError(err instanceof Error ? err.message : 'Erreur lors de la soumission.');
     } finally {

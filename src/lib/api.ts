@@ -118,6 +118,11 @@ export async function uploadMediaFile(file: File): Promise<MediaAttachment> {
 }
 
 export const api = {
+  health: () =>
+    apiRequest<{ok: boolean; persistent: boolean; realtime: boolean}>(
+      '/api/health',
+    ),
+
   register: (payload: {name: string; email: string; phone: string; password: string}) =>
     apiRequest<{token: string; user: AuthUser}>('/api/auth/register', {
       method: 'POST',

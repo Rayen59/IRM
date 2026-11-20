@@ -136,21 +136,25 @@ async function hydrateFromRemoteKv(): Promise<void> {
   }
 }
 
-function saveToRemoteKv(db: DatabaseSchema) {
+async function saveToRemoteKv(db: DatabaseSchema): Promise<void> {
   if (!KV_URL || !KV_TOKEN) return;
-  fetch(`${KV_URL}/set/${KV_KEY}`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${KV_TOKEN}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(JSON.stringify(db)),
-  }).catch(() => {});
+  try {
+    await fetch(`${KV_URL}/set/${KV_KEY}`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${KV_TOKEN}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(JSON.stringify(db)),
+    });
+  } catch {
+    // Ignore transient network error
+  }
 }
 
-function saveDatabase(db: DatabaseSchema) {
+async function saveDatabase(db: DatabaseSchema): Promise<void> {
   dbCache = db;
-  saveToRemoteKv(db);
+  await saveToRemoteKv(db);
 
   if (IS_VERCEL) {
     try {
@@ -340,8 +344,9 @@ export function createApiApp() {
   const app = express();
   app.use(express.json({limit: '25mb'}));
 
-  // Hydrate from remote KV on Vercel when configured
-  app.use('/api', async (_req, _res, next) => {
+  // Prevent CDN/browser caching of live API JSON and hydrate from remote KV when configured
+  app.use('/api', async (_req, res, next) => {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
     if (KV_URL && KV_TOKEN) {
       await hydrateFromRemoteKv();
     }
@@ -421,8 +426,22 @@ export function createApiApp() {
     };
   }
 
+  // --- HEALTH & CAPABILITIES ---
+  app.get('/api/health', (_req, res) => {
+    res.json({
+      ok: true,
+      persistent: !IS_VERCEL || Boolean(KV_URL && KV_TOKEN),
+      realtime: !IS_VERCEL,
+    });
+  });
+
   // --- REAL-TIME SSE STREAM ---
   app.get('/api/events', (req, res) => {
+    if (IS_VERCEL) {
+      res.status(204).end();
+      return;
+    }
+
     const user = getAuthUser(req);
     if (!user) {
       res.status(401).json({error: 'Non authentifié.'});
@@ -454,7 +473,7 @@ export function createApiApp() {
   });
 
   // --- AUTH ENDPOINTS ---
-  app.post('/api/auth/register', (req, res) => {
+  app.post('/api/auth/register', async (req, res) => {
     const {name, email, phone, password} = req.body as {
       name?: string;
       email?: string;
@@ -526,7 +545,7 @@ export function createApiApp() {
     };
 
     db.patients.push(newPatient);
-    saveDatabase(db);
+    await saveDatabase(db);
 
     const authUser: AuthUser = {
       id: newPatient.id,
@@ -673,7 +692,7 @@ export function createApiApp() {
     res.json({doctors});
   });
 
-  app.post('/api/admin/doctors', requireAuth(['admin']), (req, res) => {
+  app.post('/api/admin/doctors', requireAuth(['admin']), async (req, res) => {
     const {name, category, email, password} = req.body as {
       name?: string;
       category?: MedicalCategoryId;
@@ -716,7 +735,7 @@ export function createApiApp() {
     };
 
     db.doctors.push(newDoctor);
-    saveDatabase(db);
+    await saveDatabase(db);
 
     broadcastEvent('sync', {scope: 'admin'}, (u) => u.role === 'admin');
 
@@ -733,7 +752,7 @@ export function createApiApp() {
     });
   });
 
-  app.patch('/api/admin/doctors/:id', requireAuth(['admin']), (req, res) => {
+  app.patch('/api/admin/doctors/:id', requireAuth(['admin']), async (req, res) => {
     const {id} = req.params;
     const {status, category, password} = req.body as {
       status?: 'active' | 'suspended';
@@ -755,7 +774,7 @@ export function createApiApp() {
       doctor.plainPassword = password.trim();
     }
 
-    saveDatabase(db);
+    await saveDatabase(db);
     broadcastEvent('sync', {scope: 'admin'}, (u) => u.role === 'admin');
 
     res.json({
@@ -771,7 +790,7 @@ export function createApiApp() {
     });
   });
 
-  app.delete('/api/admin/doctors/:id', requireAuth(['admin']), (req, res) => {
+  app.delete('/api/admin/doctors/:id', requireAuth(['admin']), async (req, res) => {
     const {id} = req.params;
     const db = loadDatabase();
     const index = db.doctors.findIndex((d) => d.id === id);
@@ -780,7 +799,7 @@ export function createApiApp() {
       return;
     }
     db.doctors.splice(index, 1);
-    saveDatabase(db);
+    await saveDatabase(db);
     broadcastEvent('sync', {scope: 'admin'}, (u) => u.role === 'admin');
     res.json({ok: true});
   });
@@ -817,7 +836,7 @@ export function createApiApp() {
     res.json({dossiers});
   });
 
-  app.post('/api/dossiers', requireAuth(['patient']), (req, res) => {
+  app.post('/api/dossiers', requireAuth(['patient']), async (req, res) => {
     const user = (req as express.Request & {authUser: AuthUser}).authUser;
     const {
       category,
@@ -887,7 +906,7 @@ export function createApiApp() {
     };
 
     db.dossiers.push(newDossier);
-    saveDatabase(db);
+    await saveDatabase(db);
 
     // Instant real-time broadcast to doctors in this category, the patient, and admin
     broadcastEvent(
@@ -959,7 +978,7 @@ export function createApiApp() {
   app.post(
     '/api/doctor/dossiers/:id/respond',
     requireAuth(['doctor']),
-    (req, res) => {
+    async (req, res) => {
       const user = (req as express.Request & {authUser: AuthUser}).authUser;
       const {id} = req.params;
       const {textResponse, audioUrl, videoUrl, status} = req.body as {
@@ -1010,7 +1029,7 @@ export function createApiApp() {
       dossier.responses.push(newResponse);
       dossier.status = status || 'traite';
       dossier.updatedAt = new Date().toISOString();
-      saveDatabase(db);
+      await saveDatabase(db);
 
       // Instant push to that specific patient & category doctors
       broadcastEvent(
@@ -1037,7 +1056,7 @@ export function createApiApp() {
     res.json({consultations});
   });
 
-  app.post('/api/doctor/consultations', requireAuth(['doctor']), (req, res) => {
+  app.post('/api/doctor/consultations', requireAuth(['doctor']), async (req, res) => {
     const user = (req as express.Request & {authUser: AuthUser}).authUser;
     const {
       patientId,
@@ -1126,7 +1145,7 @@ export function createApiApp() {
       }
     }
 
-    saveDatabase(db);
+    await saveDatabase(db);
 
     broadcastEvent(
       'sync',

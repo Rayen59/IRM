@@ -27,6 +27,8 @@ interface DoctorWorkspaceProps {
   activeSection: 'dossiers' | 'consultations';
   dossiers: MedicalDossier[];
   consultations: ConsultationSheet[];
+  onDossierUpdated: (dossier: MedicalDossier) => void;
+  onConsultationCreated: (consultation: ConsultationSheet) => void;
   onRefresh: () => Promise<void>;
 }
 
@@ -35,6 +37,8 @@ export function DoctorWorkspace({
   activeSection,
   dossiers,
   consultations,
+  onDossierUpdated,
+  onConsultationCreated,
   onRefresh,
 }: DoctorWorkspaceProps) {
   const [selectedDossier, setSelectedDossier] = useState<MedicalDossier | null>(null);
@@ -83,17 +87,18 @@ export function DoctorWorkspace({
     setResponseError('');
     setSendingResponse(true);
     try {
-      await api.respondToDossier(selectedDossier.id, {
+      const res = await api.respondToDossier(selectedDossier.id, {
         textResponse,
         audioUrl,
         videoUrl,
         status: responseStatus,
       });
+      onDossierUpdated(res.dossier);
       setTextResponse('');
       setAudioUrl(null);
       setVideoUrl(null);
       setSelectedDossier(null);
-      await onRefresh();
+      void onRefresh();
     } catch (err) {
       setResponseError(err instanceof Error ? err.message : 'Erreur d’envoi.');
     } finally {
@@ -112,7 +117,7 @@ export function DoctorWorkspace({
         .map((line) => line.trim())
         .filter(Boolean);
 
-      await api.createConsultationSheet({
+      const res = await api.createConsultationSheet({
         patientId: sheetTarget.patientId,
         dossierId: sheetTarget.id,
         appointmentDate,
@@ -122,9 +127,10 @@ export function DoctorWorkspace({
         doctorNotes,
         handwrittenSignature,
       });
+      onConsultationCreated(res.consultation);
       setSheetTarget(null);
       setDoctorNotes('');
-      await onRefresh();
+      void onRefresh();
     } catch (err) {
       setSheetError(err instanceof Error ? err.message : 'Erreur lors de la création.');
     } finally {

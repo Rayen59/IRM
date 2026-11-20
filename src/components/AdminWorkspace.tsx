@@ -26,12 +26,18 @@ interface AdminWorkspaceProps {
     totalDossiers: number;
     totalConsultations: number;
   };
+  onDoctorCreated: (doctor: DoctorRecord) => void;
+  onDoctorUpdated: (doctor: DoctorRecord) => void;
+  onDoctorDeleted: (doctorId: string) => void;
   onRefresh: () => Promise<void>;
 }
 
 export function AdminWorkspace({
   doctors,
   overview,
+  onDoctorCreated,
+  onDoctorUpdated,
+  onDoctorDeleted,
   onRefresh,
 }: AdminWorkspaceProps) {
   const [name, setName] = useState('');
@@ -72,13 +78,14 @@ export function AdminWorkspace({
         email,
         password,
       });
+      onDoctorCreated(res.doctor);
       setSuccessMsg(
         `Compte créé pour ${res.doctor.name} (${res.doctor.category}). Ses identifiants sont enregistrés ci-dessous pour envoi et contrôle.`,
       );
       setName('');
       setEmail('');
       setPassword('');
-      await onRefresh();
+      void onRefresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Erreur lors de la création.');
     } finally {
@@ -87,15 +94,17 @@ export function AdminWorkspace({
   };
 
   const handleToggleStatus = async (doc: DoctorRecord) => {
-    await api.updateDoctor(doc.id, {
+    const res = await api.updateDoctor(doc.id, {
       status: doc.status === 'active' ? 'suspended' : 'active',
     });
-    await onRefresh();
+    onDoctorUpdated(res.doctor);
+    void onRefresh();
   };
 
   const handleDeleteDoctor = async (doc: DoctorRecord) => {
     await api.deleteDoctor(doc.id);
-    await onRefresh();
+    onDoctorDeleted(doc.id);
+    void onRefresh();
   };
 
   const copyCredentials = (doc: DoctorRecord) => {
