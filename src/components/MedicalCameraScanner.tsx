@@ -276,7 +276,7 @@ export function MedicalCameraScanner({
     const raw = rawCanvasRef.current;
     if (!video || !raw || !video.videoWidth) return;
 
-    const maxDim = 1024;
+    const maxDim = 768;
     const scale = Math.min(1, maxDim / Math.max(video.videoWidth, video.videoHeight));
     raw.width = Math.round(video.videoWidth * scale);
     raw.height = Math.round(video.videoHeight * scale);
@@ -294,7 +294,7 @@ export function MedicalCameraScanner({
     img.onload = () => {
       const raw = rawCanvasRef.current;
       if (!raw) return;
-      const maxDim = 1024;
+      const maxDim = 768;
       const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
       raw.width = Math.round(img.width * scale);
       raw.height = Math.round(img.height * scale);
@@ -315,15 +315,15 @@ export function MedicalCameraScanner({
     setUploading(true);
     try {
       const blob = await new Promise<Blob | null>((resolve) =>
-        canvas.toBlob(resolve, 'image/png', 0.95),
+        canvas.toBlob(resolve, 'image/jpeg', 0.88),
       );
       if (!blob) throw new Error('Échec de génération de l’image.');
       const modLabel =
         MODALITY_OPTIONS.find((m) => m.id === modality)?.label || 'Scan';
       const file = new File(
         [blob],
-        `${modLabel.replace(/[^a-zA-Z0-9]/g, '_')}_${Date.now()}.png`,
-        {type: 'image/png'},
+        `${modLabel.replace(/[^a-zA-Z0-9]/g, '_')}_${Date.now()}.jpg`,
+        {type: 'image/jpeg'},
       );
       const uploaded = await uploadMediaFile(file);
       onAttachScan(uploaded);

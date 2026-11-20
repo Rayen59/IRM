@@ -33,17 +33,84 @@ async function apiRequest<T>(url: string, options: RequestInit = {}): Promise<T>
     headers.set('Content-Type', 'application/json');
   }
 
-  const response = await fetch(url, {...options, headers});
-  const data = await response.json().catch(() => ({}));
+  let response: Response;
+  try {
+    response = await fetch(url, {...options, headers});
+  } catch {
+    throw new Error('Connexion au serveur impossible. Vérifiez votre réseau.');
+  }
+
+  const text = await response.text();
+  let data: {error?: string} = {};
+  if (text) {
+    try {
+      data = JSON.parse(text) as {error?: string};
+    } catch {
+      data = {};
+    }
+  }
+
   if (!response.ok) {
-    throw new Error((data as {error?: string}).error || 'Erreur serveur.');
+    throw new Error(
+      data.error ||
+        (response.status === 404
+          ? 'Service API introuvable sur cet hébergement.'
+          : `Erreur serveur (${response.status}).`),
+    );
   }
   return data as T;
 }
 
+async function compressImageIfNeeded(file: File): Promise<File> {
+  if (!file.type.startsWith('image/') || file.size <= 350 * 1024) {
+    return file;
+  }
+  return new Promise((resolve) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      const maxDim = 1400;
+      const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
+      const w = Math.max(1, Math.round(img.width * scale));
+      const h = Math.max(1, Math.round(img.height * scale));
+      const canvas = document.createElement('canvas');
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        URL.revokeObjectURL(url);
+        resolve(file);
+        return;
+      }
+      ctx.drawImage(img, 0, 0, w, h);
+      canvas.toBlob(
+        (blob) => {
+          URL.revokeObjectURL(url);
+          if (!blob) {
+            resolve(file);
+            return;
+          }
+          const baseName = file.name.replace(/\.[^.]+$/, '');
+          resolve(
+            new File([blob], `${baseName}.jpg`, {type: 'image/jpeg'}),
+          );
+        },
+        'image/jpeg',
+        0.86,
+      );
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      resolve(file);
+    };
+    img.src = url;
+  });
+}
+
 export async function uploadMediaFile(file: File): Promise<MediaAttachment> {
+  const optimized = await compressImageIfNeeded(file);
   const formData = new FormData();
-  formData.append('file', file);
+  formData.append('file', optimized);
   return apiRequest<MediaAttachment>('/api/upload', {
     method: 'POST',
     body: formData,

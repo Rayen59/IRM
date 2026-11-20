@@ -90,10 +90,9 @@ export function PatientWorkspace({
     setUploadingFiles(true);
     setFormError('');
     try {
-      const uploaded: MediaAttachment[] = [];
-      for (const file of Array.from(files)) {
-        uploaded.push(await uploadMediaFile(file));
-      }
+      const uploaded = await Promise.all(
+        Array.from(files).map((file) => uploadMediaFile(file)),
+      );
       setMriImages((prev) => [...prev, ...uploaded]);
     } catch (err) {
       setFormError(err instanceof Error ? err.message : 'Erreur d’envoi d’image.');
@@ -107,10 +106,9 @@ export function PatientWorkspace({
     setUploadingFiles(true);
     setFormError('');
     try {
-      const uploaded: MediaAttachment[] = [];
-      for (const file of Array.from(files)) {
-        uploaded.push(await uploadMediaFile(file));
-      }
+      const uploaded = await Promise.all(
+        Array.from(files).map((file) => uploadMediaFile(file)),
+      );
       setDocuments((prev) => [...prev, ...uploaded]);
     } catch (err) {
       setFormError(err instanceof Error ? err.message : 'Erreur d’envoi de document.');

@@ -104,6 +104,39 @@ export default function App() {
       });
   }, [loadRoleData]);
 
+  // Real-time instant synchronization (SSE + focus + fast visible fallback)
+  useEffect(() => {
+    if (!user) return;
+    const token = getStoredToken();
+    let eventSource: EventSource | null = null;
+
+    if (token && typeof EventSource !== 'undefined') {
+      eventSource = new EventSource(
+        `/api/events?token=${encodeURIComponent(token)}`,
+      );
+      eventSource.addEventListener('sync', () => {
+        loadRoleData(user);
+      });
+    }
+
+    const onFocus = () => {
+      loadRoleData(user);
+    };
+    window.addEventListener('focus', onFocus);
+
+    const intervalId = window.setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        loadRoleData(user);
+      }
+    }, 3500);
+
+    return () => {
+      if (eventSource) eventSource.close();
+      window.removeEventListener('focus', onFocus);
+      clearInterval(intervalId);
+    };
+  }, [user, loadRoleData]);
+
   const handleAuthSuccess = (loggedInUser: AuthUser) => {
     setUser(loggedInUser);
     loadRoleData(loggedInUser);
